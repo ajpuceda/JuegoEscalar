@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Escalador — elige qué soltar y no caigas</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b1120; color: #e2e8f0;
+  }
+  body { min-height: 100vh; background: #0b1120; padding: 14px; }
+  .wrap { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  header h1 { font-size: 20px; letter-spacing: 0.5px; color: #fbbf24; }
+  header h1 span { color: #64748b; font-size: 13px; font-weight: 400; margin-left: 8px; }
+  .btn {
+    font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; border: 1px solid #334155;
+    background: #1e293b; color: #e2e8f0; cursor: pointer; transition: background .15s;
+  }
+  .btn:hover { background: #334155; }
+  .btn.primary { background: #f59e0b; border-color: #f59e0b; color: #1c1917; font-weight: 600; }
+  .btn.primary:hover { background: #fbbf24; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 7px 10px; }
+  .stat .k { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; }
+  .stat .v { font-size: 17px; font-weight: 600; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+
+  .stamrow { display: flex; align-items: center; gap: 10px; background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 8px 12px; }
+  .stamrow .k { font-size: 12px; color: #64748b; white-space: nowrap; }
+  .stambar { flex: 1; height: 12px; background: #1e293b; border-radius: 999px; overflow: hidden; }
+  .stamfill { height: 100%; width: 100%; border-radius: 999px; background: #34d399; transition: width .1s linear; }
+  .stamfill.mid { background: #fbbf24; }
+  .stamfill.low { background: #ef4444; }
+  .stamnum { font-size: 13px; font-variant-numeric: tabular-nums; width: 40px; text-align: right; color: #94a3b8; }
+
+  .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .limb {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 9px 13px; border-radius: 10px;
+    border: 1px solid #334155; background: #1e293b; color: #cbd5e1; cursor: pointer; min-width: 86px;
+    text-align: center; transition: all .12s;
+  }
+  .limb .kk { display: inline-block; margin-left: 6px; font-size: 10px; color: #64748b; border: 1px solid #334155; border-radius: 4px; padding: 0 4px; }
+  .limb.sel { background: #f59e0b; border-color: #fbbf24; color: #1c1917; }
+  .limb.sel .kk { color: #78350f; border-color: #b45309; }
+  .limb:disabled { opacity: .45; cursor: default; }
+  .status { margin-left: auto; font-size: 13px; font-weight: 700; padding: 7px 14px; border-radius: 999px; border: 1px solid #334155; background: #1e293b; }
+  .status[data-s="stable"] { color: #34d399; border-color: #065f46; }
+  .status[data-s="wobbly"] { color: #fbbf24; border-color: #92400e; }
+  .status[data-s="critical"] { color: #f87171; border-color: #7f1d1d; animation: blink .5s infinite alternate; }
+  .status[data-s="neutral"] { color: #94a3b8; }
+  @keyframes blink { to { opacity: .55; } }
+
+  #viewport {
+    position: relative; height: 620px; overflow: hidden; border-radius: 14px;
+    border: 1px solid #1e293b; background: #0f172a; touch-action: manipulation;
+  }
+  #wall {
+    position: absolute; left: 50%; top: 0; width: 400px; height: 2600px;
+    background: linear-gradient(180deg, #8ea4b8 0%, #7a6a58 12%, #6b5a48 50%, #5a4d40 100%);
+    border-left: 3px solid #3f352b; border-right: 3px solid #3f352b;
+  }
+  #wall::before {
+    content: ""; position: absolute; inset: 0; opacity: .18; pointer-events: none;
+    background: repeating-linear-gradient(115deg, rgba(0,0,0,.5) 0 2px, transparent 2px 26px);
+  }
+  .mark { position: absolute; left: 0; width: 100%; border-top: 1px dashed rgba(255,255,255,.25); pointer-events: none; }
+  .mark span { position: absolute; right: 6px; top: 3px; font-size: 10px; color: rgba(255,255,255,.55); }
+  .summit { position: absolute; left: 0; width: 100%; text-align: center; pointer-events: none; }
+  .groundstrip { position: absolute; left: -3px; right: -3px; height: 26px; bottom: 0; background: #3d4a33; border-top: 3px solid #2c3626; }
+
+  .hold { position: absolute; transform: translate(-50%, -50%); border: 2px solid rgba(0,0,0,.45); cursor: pointer; padding: 0; }
+  .hold.jug { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #d9a76a, #b98a4e); }
+  .hold.crimp { width: 18px; height: 12px; border-radius: 5px; background: #957250; }
+  .hold.sloper { width: 32px; height: 20px; border-radius: 50%; background: radial-gradient(ellipse at 40% 30%, #9db2c4, #6f8699); }
+  .hold.rest { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #6fd99e, #34a06a); }
+  .hold.ledge { width: 48px; height: 14px; border-radius: 7px; background: linear-gradient(180deg, #e2b06b, #c08a4a); }
+  .hold.ground { width: 20px; height: 12px; border-radius: 6px; background: #5c6b4c; border-color: #2c3626; }
+  .hold.reach { box-shadow: 0 0 0 3px rgba(252,211,77,.45), 0 0 14px rgba(252,211,77,.55); }
+  .hold:active { transform: translate(-50%, -50%) scale(.92); }
+
+  #bodysvg { position: absolute; inset: 0; width: 400px; height: 2600px; pointer-events: none; }
+
+  #rail { position: absolute; right: 10px; top: 14px; bottom: 14px; width: 6px; background: rgba(255,255,255,.08); border-radius: 999px; }
+  .railmark { position: absolute; left: 50%; transform: translate(-50%, -50%); border-radius: 999px; }
+  #rail .cp { width: 8px; height: 8px; background: #94a3b8; opacity: .7; }
+  #rail .best { width: 10px; height: 3px; background: #38bdf8; }
+  #rail .cur { width: 14px; height: 14px; background: #fbbf24; border: 2px solid #78350f; }
+
+  #toast {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(15,23,42,.92);
+    border: 1px solid #334155; color: #fde68a; font-size: 13px; padding: 7px 16px; border-radius: 999px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; z-index: 5;
+  }
+
+  #overlay {
+    position: absolute; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
+    background: rgba(2,6,23,.82); backdrop-filter: blur(3px); padding: 16px;
+  }
+  #overlay.show { display: flex; }
+  .card { background: #101a30; border: 1px solid #27344d; border-radius: 16px; padding: 22px 24px; max-width: 430px; width: 100%; text-align: center; }
+  .card h2 { font-size: 24px; color: #fbbf24; margin-bottom: 6px; }
+  .card p.sub { color: #94a3b8; font-size: 13px; margin-bottom: 14px; }
+  .card ul { text-align: left; font-size: 13px; line-height: 1.55; color: #cbd5e1; margin: 0 0 14px 18px; }
+  .card ul b { color: #fcd34d; }
+  .legend { display: flex; flex-direction: column; gap: 5px; margin: 0 0 16px 18px; text-align: left; }
+  .legend div { font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,.4); flex: none; }
+  .dot.ledge { border-radius: 4px; width: 18px; height: 7px; }
+  .card .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .statline { font-size: 14px; color: #e2e8f0; margin-bottom: 14px; }
+  .statline b { color: #fcd34d; }
+
+  footer { text-align: center; font-size: 12px; color: #475569; padding-bottom: 8px; }
+  @media (max-width: 520px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .limb { min-width: 70px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧗 ESCALADOR <span id="route"></span></h1>
+    <div style="display:flex;gap:8px">
+      <button class="btn" id="btnNew">Nueva ruta</button>
+      <button class="btn" id="btnRestart">Reiniciar</button>
+    </div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Altura</div><div class="v" id="hHeight">0,0 m</div></div>
+    <div class="stat"><div class="k">Mejor</div><div class="v" id="hBest">0,0 m</div></div>
+    <div class="stat"><div class="k">Caídas</div><div class="v" id="hFalls">0</div></div>
+    <div class="stat"><div class="k">Tiempo</div><div class="v" id="hTime">0:00</div></div>
+  </div>
+
+  <div class="stamrow">
+    <span class="k">💪 Resistencia</span>
+    <div class="stambar"><div class="stamfill" id="stamFill"></div></div>
+    <span class="stamnum" id="stamNum">100</span>
+  </div>
+
+  <div class="controls">
+    <button class="limb" data-limb="lh">Mano izq.<span class="kk">1</span></button>
+    <button class="limb" data-limb="rh">Mano der.<span class="kk">2</span></button>
+    <button class="limb" data-limb="lf">Pie izq.<span class="kk">3</span></button>
+    <button class="limb" data-limb="rf">Pie der.<span class="kk">4</span></button>
+    <span class="status" id="status" data-s="neutral">Listo</span>
+  </div>
+
+  <div id="viewport">
+    <div id="wall"></div>
+    <div id="rail"></div>
+    <div id="toast"></div>
+    <div id="overlay"><div class="card" id="overlayCard"></div></div>
+  </div>
+
+  <footer>Consejo: alterna manos y pies como en la roca de verdad — sube los pies antes de estirarte demasiado.</footer>
+</div>
+
+<script>
+"use strict";
+/* ============================= CONSTANTES ============================= */
+var WALL_W = 400, WALL_H = 2600, VIEW_H = 620;
+var REACH = 180, WIN_Y = 118;
+var HANDS = ["lh", "rh"], FEET = ["lf", "rf"], ALL = ["lh", "rh", "lf", "rf"];
+var GRACE = { wobbly: 4.5, critical: 1.1 };
+var TYPE_INFO = {
+  jug:    "Presa normal",
+  crimp:  "Regleta (gasta más)",
+  sloper: "Placa (menos estable)",
+  rest:   "Descanso (recupera)",
+  ledge:  "Repisa (checkpoint)",
+  ground: "Suelo"
+};
+
+/* ============================= UTILIDADES ============================= */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function ease(t) { t = clamp(t, 0, 1); return 1 - Math.pow(1 - t, 3); }
+function fmtTime(t) {
+  var m = Math.floor(t / 60), s = Math.floor(t % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+function avgX(arr) { var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i].x; return s / arr.length; }
+function avgY(arr) { var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i].y; return s / arr.length; }
+
+function loadBest() {
+  try { var v = parseFloat(localStorage.getItem("escalador-best") || "0"); if (v > 0) return v; } catch (e) {}
+  return 0;
+}
+function saveBest(m) {
+  try { localStorage.setItem("escalador-best", String(m)); } catch (e) {}
+}
+
+/* ============================= GEOMETRÍA ============================= */
+function convexHull(points) {
+  var p = points.slice().sort(function (a, b) { return a.x - b.x || a.y - b.y; });
+  function cross(o, a, b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
+  var lower = [];
+  for (var i = 0; i < p.length; i++) {
+    var pt = p[i];
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], pt) <= 0) lower.pop();
+    lower.push(pt);
+  }
+  var upper = [];
+  for (var j = p.length - 1; j >= 0; j--) {
+    var pt2 = p[j];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], pt2) <= 0) upper.pop();
+    upper.push(pt2);
+  }
+  lower.pop(); upper.pop();
+  var h = lower.concat(upper);
+  return h.length ? h : points.slice();
+}
+function closestOnSeg(px, py, ax, ay, bx, by) {
+  var dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy, t = 0;
+  if (l2 > 0) t = clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1);
+  return { x: ax + dx * t, y: ay + dy * t };
+}
+/* Distancia ponderada del CoM al polígono de apoyo.
+   Colgando por debajo del apoyo pesa 0.35 (estar colgado es natural en escalada). */
+function stabilityDistance(com, ptsIn) {
+  var seen = {}, pts = [];
+  for (var i = 0; i < ptsIn.length; i++) {
+    var k = Math.round(ptsIn[i].x) + "," + Math.round(ptsIn[i].y);
+    if (!seen[k]) { seen[k] = 1; pts.push(ptsIn[i]); }
+  }
+  if (!pts.length) return 999;
+  function wdist(b) {
+    var vy = com.y - b.y;
+    return Math.hypot(com.x - b.x, vy > 0 ? vy * 0.35 : vy);
+  }
+  function segCase(a, b) {
+    var c = closestOnSeg(com.x, com.y, a.x, a.y, b.x, b.y);
+    return Math.hypot(com.x - c.x, com.y - c.y) < 6 ? 0 : wdist(c);
+  }
+  if (pts.length === 1) return wdist(pts[0]);
+  if (pts.length === 2) return segCase(pts[0], pts[1]);
+  var h = convexHull(pts);
+  if (h.length < 3) return segCase(h[0], h[1] || h[0]);
+  var pos = 0, neg = 0;
+  for (var e = 0; e < h.length; e++) {
+    var a = h[e], b = h[(e + 1) % h.length];
+    var cr = (b.x - a.x) * (com.y - a.y) - (b.y - a.y) * (com.x - a.x);
+    if (cr >= 0) pos++; else neg++;
+  }
+  if (pos === 0 || neg === 0) return 0; /* dentro del polígono */
+  var best = Infinity;
+  for (var e2 = 0; e2 < h.length; e2++) {
+    var a2 = h[e2], b2 = h[(e2 + 1) % h.length];
+    var c2 = closestOnSeg(com.x, com.y, a2.x, a2.y, b2.x, b2.y);
+    var d = wdist(c2);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/* ============================= MURO ============================= */
+function genWall(seed) {
+  var rnd = mulberry32(seed), holds = [], id = 0;
+  holds.push({ id: id++, x: 150, y: 2574, type: "ground" });
+  holds.push({ id: id++, x: 250, y: 2574, type: "ground" });
+  var meanX = 200;
+  for (var i = 0; i < 25; i++) {
+    meanX += (rnd() - 0.5) * 110;
+    meanX = clamp(meanX, 85, 315);
+    var y = 2560 - 95 * (i + 1);
+    if (i % 6 === 0 && i > 0) { /* repisa-checkpoint */
+      holds.push({ id: id++, x: meanX - 42, y: y, type: "ledge" });
+      holds.push({ id: id++, x: meanX + 42, y: y, type: "ledge" });
+      continue;
+    }
+    var n = rnd() < 0.45 ? 3 : 2;
+    for (var k = 0; k < n; k++) {
+      var x = clamp(meanX + (k - (n - 1) / 2) * (65 + rnd() * 30) + (rnd() - 0.5) * 26, 32, 368);
+      var t = rnd(), type = "jug";
+      if (t < 0.12) type = "crimp";
+      else if (t < 0.22) type = "sloper";
+      else if (t < 0.27) type = "rest";
+      holds.push({ id: id++, x: x, y: y + (rnd() - 0.5) * 30, type: type });
+    }
+  }
+  holds.push({ id: id++, x: 170, y: 95, type: "ledge" }); /* cima */
+  holds.push({ id: id++, x: 230, y: 95, type: "ledge" });
+  return holds;
+}
+
+function startLimbs(holds) {
+  var ground = holds.filter(function (h) { return h.type === "ground"; });
+  var row0 = holds.filter(function (h) { return h.type !== "ground" && h.y > 2400 && h.y < 2500; })
+    .sort(function (a, b) { return Math.abs(a.x - 200) - Math.abs(b.x - 200); });
+  return { lh: row0[0].id, rh: row0[1].id, lf: ground[0].id, rf: ground[1].id };
+}
+
+/* ============================= ESTADO ============================= */
+var S = null;
+function newGame(seed) {
+  var holds = genWall(seed);
+  var bestM = loadBest();
+  return {
+    phase: "play", seed: seed, holds: holds,
+    map: (function () { var m = {}; for (var i = 0; i < holds.length; i++) m[holds[i].id] = holds[i]; return m; })(),
+    limbs: startLimbs(holds),
+    moving: null, selected: null,
+    stamina: 100, unstableAcc: 0,
+    time: 0, falls: 0, checkpointY: null,
+    fallAnim: null, fallReason: "",
+    msg: null,
+    bestY: bestM > 0 ? 2560 - bestM * 50 : 2560
+  };
+}
+
+/* ============================= FÍSICA ============================= */
+function limbPos(l) {
+  if (S.moving && S.moving.limb === l) {
+    var to = S.map[S.moving.toId];
+    var e = ease(S.moving.t / S.moving.dur);
+    return { x: S.moving.from.x + (to.x - S.moving.from.x) * e, y: S.moving.from.y + (to.y - S.moving.from.y) * e };
+  }
+  var h = S.map[S.limbs[l]];
+  return { x: h.x, y: h.y };
+}
+/* Centro de masa: media de las 4 extremidades (la que se mueve tira con peso extra) */
+function com() {
+  var sx = 0, sy = 0, w = 0;
+  for (var i = 0; i < ALL.length; i++) {
+    var l = ALL[i], p = limbPos(l), lw = (S.moving && S.moving.limb === l) ? 1.5 : 1;
+    sx += p.x * lw; sy += p.y * lw; w += lw;
+  }
+  return { x: sx / w, y: sy / w + 8 };
+}
+/* Clasificación de estabilidad frente al polígono de apoyo (solo ancladas) */
+function classify() {
+  var c = com(), support = [], sloper = false, handsN = 0;
+  for (var i = 0; i < ALL.length; i++) {
+    var l = ALL[i];
+    if (S.moving && S.moving.limb === l) continue;
+    var h = S.map[S.limbs[l]];
+    support.push({ x: h.x, y: h.y });
+    if (h.type === "sloper") sloper = true;
+    if (l === "lh" || l === "rh") handsN++;
+  }
+  if (handsN === 0) return { com: c, dist: 999, state: "critical" };
+  var dist = stabilityDistance(c, support);
+  var margin = sloper ? 13 : 20;
+  var state = dist < margin ? "stable" : (dist < 55 ? "wobbly" : "critical");
+  return { com: c, dist: dist, state: state };
+}
+
+/* ============================= LÓGICA ============================= */
+function toast(text) { S.msg = { text: text, t: 2.2 }; }
+
+function step(dt) {
+  if (S.msg) { S.msg.t -= dt; if (S.msg.t <= 0) S.msg = null; }
+  if (S.phase === "fall") {
+    S.fallAnim.v += 1600 * dt;
+    S.fallAnim.y += S.fallAnim.v * dt;
+    if (S.fallAnim.y >= 2530) { S.fallAnim.y = 2530; S.phase = "dead"; }
+    return;
+  }
+  if (S.phase !== "play") return;
+  S.time += dt;
+
+  if (S.moving) {
+    S.moving.t += dt;
+    if (S.moving.t >= S.moving.dur) { S.limbs[S.moving.limb] = S.moving.toId; S.moving = null; }
+  }
+
+  var c = classify();
+  var drain = 0;
+  if (S.moving) drain += 5;
+  for (var i = 0; i < ALL.length; i++) {
+    var l = ALL[i];
+    if (S.moving && S.moving.limb === l) continue;
+    var h = S.map[S.limbs[l]];
+    if (h.type === "crimp") drain += 3;
+    if (h.type === "sloper") drain += 2;
+  }
+
+  if (c.state === "stable") {
+    S.unstableAcc = Math.max(0, S.unstableAcc - 1.5 * dt);
+    if (!S.moving) {
+      var onRest = false;
+      for (var j = 0; j < ALL.length; j++) {
+        var hh = S.map[S.limbs[ALL[j]]];
+        if (hh.type === "rest" || hh.type === "ledge") onRest = true;
+      }
+      S.stamina = Math.min(100, S.stamina + 7 * (onRest ? 1.7 : 1) * dt);
+    }
+  } else {
+    S.unstableAcc += dt;
+    drain += c.state === "critical" ? 16 : 6;
+    if (S.unstableAcc > GRACE[c.state]) {
+      doFall(c.state === "critical" ? "¡Perdiste el equilibrio!" : "Te pasaste demasiado tiempo en el filo…");
+      return;
+    }
+  }
+
+  S.stamina -= drain * dt;
+  if (S.stamina <= 0) {
+    S.stamina = 0;
+    doFall("Sin fuerzas: los brazos dijeron basta.");
+    return;
+  }
+
+  if (c.com.y < S.bestY) S.bestY = c.com.y;
+  for (var k = 0; k < S.holds.length; k++) {
+    var hd = S.holds[k];
+    if (hd.type === "ledge" && hd.y < 2400 && c.com.y < hd.y - 30) {
+      if (S.checkpointY === null || hd.y < S.checkpointY) S.checkpointY = hd.y;
+    }
+  }
+  if (c.com.y <= WIN_Y) {
+    S.phase = "win";
+    saveBest((2560 - S.bestY) / 50);
+  }
+}
+
+function doFall(reason) {
+  var c = classify();
+  S.phase = "fall";
+  S.falls++;
+  S.fallAnim = { y: c.com.y, v: 0 };
+  S.fallReason = reason;
+  S.selected = null;
+  saveBest((2560 - S.bestY) / 50);
+}
+
+function respawn() {
+  if (S.checkpointY !== null) {
+    var pair = S.holds.filter(function (h) {
+      return h.type === "ledge" && Math.abs(h.y - S.checkpointY) < 20;
+    });
+    if (pair.length >= 2) {
+      S.limbs = { lh: pair[0].id, rh: pair[1].id, lf: pair[0].id, rf: pair[1].id };
+    } else {
+      S.limbs = startLimbs(S.holds);
+    }
+  } else {
+    S.limbs = startLimbs(S.holds);
+  }
+  S.stamina = 65;
+  S.moving = null; S.selected = null; S.unstableAcc = 0;
+  S.fallAnim = null; S.phase = "play";
+}
+
+function tryMove(h) {
+  if (S.phase !== "play") return;
+  if (!S.selected) { toast("Elige primero qué soltar (1–4 o botones)"); return; }
+  if (S.moving) { toast("Espera: ya hay un movimiento en curso"); return; }
+  if (h.id === S.limbs[S.selected]) { toast("Esa extremidad ya está en esa presa"); return; }
+  var c = com();
+  var d = Math.hypot(h.x - c.x, h.y - c.y);
+  if (d > REACH) { toast("Demasiado lejos para tu alcance"); return; }
+  var cost = 1 + d * 0.06;
+  if (S.stamina < cost) { toast("Muy cansado: descansa un poco"); return; }
+  S.stamina -= cost;
+  var from = S.map[S.limbs[S.selected]];
+  S.moving = { limb: S.selected, from: { x: from.x, y: from.y }, toId: h.id, t: 0, dur: 0.25 + d / 240 };
+  S.selected = null;
+}
+
+/* ============================= RENDER ============================= */
+var wall, overlay, overlayCard, rail, toastEl;
+var el = {};
+var lastOverlayPhase = "";
+
+function buildScenery() {
+  var html = "";
+  for (var y = 250; y < 2500; y += 250) {
+    html += '<div class="mark" style="top:' + y + 'px"><span>' + ((2560 - y) / 50) + ' m</span></div>';
+  }
+  html += '<div class="summit" style="top:30px;font-size:26px">🏁</div>';
+  html += '<div class="summit" style="top:56px;font-size:10px;color:#fff;letter-spacing:2px">CIMA</div>';
+  html += '<div class="groundstrip"></div>';
+  return html;
+}
+
+function buildHolds() {
+  var html = '<div id="scenery">' + buildScenery() + '</div>';
+  html += '<div id="holdsLayer">';
+  for (var i = 0; i < S.holds.length; i++) {
+    var h = S.holds[i];
+    html += '<button class="hold ' + h.type + '" data-id="' + h.id + '" title="' + TYPE_INFO[h.type] +
+      '" style="left:' + h.x + 'px;top:' + h.y + 'px"></button>';
+  }
+  html += '</div>';
+  html += '<svg id="bodysvg" viewBox="0 0 ' + WALL_W + ' ' + WALL_H + '" xmlns="http://www.w3.org/2000/svg"></svg>';
+  wall.innerHTML = html;
+  document.getElementById("holdsLayer").addEventListener("click", function (ev) {
+    var t = ev.target.closest ? ev.target.closest(".hold") : null;
+    if (!t) return;
+    tryMove(S.map[parseInt(t.getAttribute("data-id"), 10)]);
+  });
+}
+
+function r1(n) { return Math.round(n * 10) / 10; }
+
+function bodySvgString(P, shoulder, hip, head) {
+  var s = "";
+  /* círculo de alcance */
+  if (S.selected && !S.moving && S.phase === "play") {
+    var cc = com();
+    s += '<circle cx="' + r1(cc.x) + '" cy="' + r1(cc.y) + '" r="' + REACH +
+      '" fill="none" stroke="rgba(252,211,77,.25)" stroke-width="1.5" stroke-dasharray="6 6"/>';
+  }
+  /* anillo de equilibrio perdido */
+  if (S.phase === "play" && !S.moving) {
+    var c2 = classify();
+    if (c2.state !== "stable") {
+      var total = GRACE[c2.state];
+      var frac = Math.max(0, 1 - S.unstableAcc / total);
+      var col = c2.state === "critical" ? "#ef4444" : "#fbbf24";
+      s += '<circle cx="' + r1(c2.com.x) + '" cy="' + r1(c2.com.y) + '" r="' + r1(12 + 30 * frac) +
+        '" fill="none" stroke="' + col + '" stroke-width="3" opacity=".9"/>';
+    }
+  }
+  /* piernas y brazos con codo/rodilla ligeramente flexionados */
+  function limbPath(a, b, side) {
+    var mx = (a.x + b.x) / 2 + 14 * side, my = (a.y + b.y) / 2 - 6;
+    return '<path d="M' + r1(a.x) + ' ' + r1(a.y) + ' Q' + r1(mx) + ' ' + r1(my) + ' ' + r1(b.x) + ' ' + r1(b.y) + '" />';
+  }
+  s += '<g fill="none" stroke="#3f5f8a" stroke-width="6" stroke-linecap="round">' +
+    limbPath(hip, P.lf, -1) + limbPath(hip, P.rf, 1) + '</g>';
+  s += '<line x1="' + r1(shoulder.x) + '" y1="' + r1(shoulder.y) + '" x2="' + r1(hip.x) + '" y2="' + r1(hip.y) +
+    '" stroke="#d95f43" stroke-width="9" stroke-linecap="round"/>';
+  s += '<g fill="none" stroke="#e8b07c" stroke-width="5" stroke-linecap="round">' +
+    limbPath(shoulder, P.lh, -1) + limbPath(shoulder, P.rh, 1) + '</g>';
+  s += '<circle cx="' + r1(head.x) + '" cy="' + r1(head.y) + '" r="9" fill="#f0c08c" stroke="#7a4a24" stroke-width="2"/>';
+  s += '<circle cx="' + r1(P.lh.x) + '" cy="' + r1(P.lh.y) + '" r="5.5" fill="#f6d3a3" stroke="#7a4a24" stroke-width="1.5"/>';
+  s += '<circle cx="' + r1(P.rh.x) + '" cy="' + r1(P.rh.y) + '" r="5.5" fill="#f6d3a3" stroke="#7a4a24" stroke-width="1.5"/>';
+  s += '<circle cx="' + r1(P.lf.x) + '" cy="' + r1(P.lf.y) + '" r="6" fill="#2f3e52" stroke="#111827" stroke-width="1.5"/>';
+  s += '<circle cx="' + r1(P.rf.x) + '" cy="' + r1(P.rf.y) + '" r="6" fill="#2f3e52" stroke="#111827" stroke-width="1.5"/>';
+  /* extremidad seleccionada */
+  if (S.selected) {
+    var p = P[S.selected];
+    s += '<circle cx="' + r1(p.x) + '" cy="' + r1(p.y) + '" r="15" fill="none" stroke="#fcd34d" stroke-width="2.5" stroke-dasharray="4 3"/>';
+  }
+  return s;
+}
+
+function updateReachable() {
+  var reachSet = null;
+  if (S.phase === "play" && S.selected && !S.moving) {
+    var c = com();
+    reachSet = {};
+    for (var i = 0; i < S.holds.length; i++) {
+      var h = S.holds[i];
+      if (h.id !== S.limbs[S.selected] && Math.hypot(h.x - c.x, h.y - c.y) <= REACH) reachSet[h.id] = 1;
+    }
+  }
+  var btns = document.querySelectorAll(".hold");
+  for (var j = 0; j < btns.length; j++) {
+    var b = btns[j];
+    var id = parseInt(b.getAttribute("data-id"), 10);
+    if (reachSet && reachSet[id]) b.classList.add("reach");
+    else b.classList.remove("reach");
+  }
+}
+
+function overlayHtml() {
+  if (S.phase === "start") {
+    return "<h2>🧗 ESCALADOR</h2><p class='sub'>Elige qué soltar y dónde ponerlo. No caigas.</p>" +
+      "<ul>" +
+      "<li>Pulsa <b>1–4</b> (o los botones) para elegir la extremidad y haz clic en una presa dentro del círculo de alcance.</li>" +
+      "<li>Solo mueves <b>una extremidad a la vez</b>: el cuerpo depende de las otras tres.</li>" +
+      "<li>El <b>centro de gravedad</b> debe quedar dentro del triángulo de apoyo. Si sales, aparece el anillo: ¡recoloca rápido!</li>" +
+      "<li>Vigila la <b>resistencia</b>: cada movimiento gasta; regletas y placas agotan; presas verdes y repisas recuperan.</li>" +
+      "<li>Si te quedas sin fuerza o sin equilibrio, caes al <b>último checkpoint</b>.</li>" +
+      "<li>Objetivo: la <b>cima 🏁</b> a unos 49 m.</li>" +
+      "</ul>" +
+      "<div class='legend'>" +
+      "<div><span class='dot' style='background:radial-gradient(circle at 35% 30%,#d9a76a,#b98a4e)'></span>Presa normal</div>" +
+      "<div><span class='dot' style='background:#957250;border-radius:4px;width:18px'></span>Regleta — gasta más resistencia</div>" +
+      "<div><span class='dot' style='background:radial-gradient(ellipse at 40% 30%,#9db2c4,#6f8699)'></span>Placa — menos estable</div>" +
+      "<div><span class='dot' style='background:radial-gradient(circle at 35% 30%,#6fd99e,#34a06a)'></span>Descanso — recupera</div>" +
+      "<div><span class='dot ledge' style='background:linear-gradient(180deg,#e2b06b,#c08a4a)'></span>Repisa — checkpoint</div>" +
+      "</div>" +
+      "<div class='row'><button class='btn primary' id='ovStart'>Empezar a escalar</button></div>";
+  }
+  if (S.phase === "dead") {
+    return "<h2>💥 ¡Has caído!</h2><p class='sub'>" + S.fallReason + "</p>" +
+      "<p class='statline'>Caída nº <b>" + S.falls + "</b> · Checkpoint: <b>" +
+      (S.checkpointY === null ? "suelo" : ((2560 - S.checkpointY) / 50).toFixed(1) + " m") + "</b></p>" +
+      "<div class='row'><button class='btn primary' id='ovRetry'>Reintentar desde checkpoint</button>" +
+      "<button class='btn' id='ovNew'>Nueva ruta</button></div>";
+  }
+  if (S.phase === "win") {
+    return "<h2>🏁 ¡CIMA alcanzada!</h2><p class='sub'>Has escalado los " +
+      ((2560 - S.bestY) / 50).toFixed(1) + " m de la ruta #" + S.seed + "</p>" +
+      "<p class='statline'>Tiempo: <b>" + fmtTime(S.time) + "</b> · Caídas: <b>" + S.falls + "</b></p>" +
+      "<div class='row'><button class='btn primary' id='ovNew'>Jugar otra ruta</button>" +
+      "<button class='btn' id='ovRepeat'>Repetir esta ruta</button></div>";
+  }
+  return "";
+}
+
+function bindOverlayButtons() {
+  var b;
+  if ((b = document.getElementById("ovStart"))) b.onclick = function () { S.phase = "play"; };
+  if ((b = document.getElementById("ovRetry"))) b.onclick = function () { respawn(); };
+  if ((b = document.getElementById("ovNew"))) b.onclick = function () {
+    S = newGame(1000 + Math.floor(Math.random() * 9000));
+    buildHolds();
+  };
+  if ((b = document.getElementById("ovRepeat"))) b.onclick = function () {
+    S = newGame(S.seed);
+    buildHolds();
+  };
+}
+
+function render() {
+  var P = {};
+  for (var i = 0; i < ALL.length; i++) P[ALL[i]] = limbPos(ALL[i]);
+  var shoulder = { x: (P.lh.x + P.rh.x) / 2, y: (P.lh.y + P.rh.y) / 2 };
+  var hip = { x: (P.lf.x + P.rf.x) / 2, y: (P.lf.y + P.rf.y) / 2 };
+  var head = { x: shoulder.x + (hip.x - shoulder.x) * 0.2, y: shoulder.y - 22 };
+  var torsoY = (shoulder.y + hip.y) / 2;
+
+  if ((S.phase === "fall" || S.phase === "dead") && S.fallAnim) {
+    var fy = S.fallAnim.y, fx = 200;
+    if (S.phase === "fall") fx = clamp(shoulder.x + (S.fallAnim.v > 400 ? 0 : 0), 40, 360);
+    shoulder = { x: fx, y: fy - 22 };
+    hip = { x: fx, y: fy + 16 };
+    head = { x: fx, y: fy - 40 };
+    P.lh = { x: fx - 28, y: fy - 14 }; P.rh = { x: fx + 28, y: fy - 14 };
+    P.lf = { x: fx - 16, y: fy + 34 }; P.rf = { x: fx + 16, y: fy + 34 };
+    torsoY = fy;
+  }
+
+  var cam = clamp(torsoY - 330, 0, WALL_H - VIEW_H);
+  wall.style.transform = "translate(-50%, -" + cam.toFixed(1) + "px)";
+
+  var svg = document.getElementById("bodysvg");
+  if (svg) svg.innerHTML = bodySvgString(P, shoulder, hip, head);
+
+  updateReachable();
+
+  /* HUD */
+  var hM = Math.max(0, (2560 - torsoY) / 50);
+  el.hHeight.textContent = hM.toFixed(1).replace(".", ",") + " m";
+  el.hBest.textContent = Math.max(0, (2560 - S.bestY) / 50).toFixed(1).replace(".", ",") + " m";
+  el.hFalls.textContent = S.falls;
+  el.hTime.textContent = fmtTime(S.time);
+  el.route.textContent = "· ruta #" + S.seed;
+  var st = Math.max(0, S.stamina);
+  el.stamFill.style.width = st + "%";
+  el.stamFill.className = "stamfill" + (st > 50 ? "" : (st > 25 ? " mid" : " low"));
+  el.stamNum.textContent = Math.round(st);
+
+  var stText = "Listo", stCls = "neutral";
+  if (S.phase === "play") {
+    var c = classify();
+    stText = c.state === "stable" ? "Equilibrado" : (c.state === "wobbly" ? "¡Inestable!" : "¡CRÍTICO!");
+    stCls = c.state;
+  } else if (S.phase === "fall") { stText = "¡Caayendo!"; stCls = "critical"; }
+  else if (S.phase === "win") { stText = "¡CIMA!"; stCls = "stable"; }
+  else if (S.phase === "dead") { stText = "En el suelo"; stCls = "neutral"; }
+  el.status.textContent = stText;
+  el.status.setAttribute("data-s", stCls);
+
+  toastEl.style.opacity = S.msg ? 1 : 0;
+  if (S.msg) toastEl.textContent = S.msg.text;
+
+  /* botones de extremidades */
+  var limbsBtns = document.querySelectorAll(".limb");
+  for (var j = 0; j < limbsBtns.length; j++) {
+    var bl = limbsBtns[j];
+    bl.classList.toggle("sel", bl.getAttribute("data-limb") === S.selected);
+  }
+
+  /* barra lateral de progreso */
+  var railHtml = "";
+  var ledges = {};
+  for (var k = 0; k < S.holds.length; k++) {
+    var hd = S.holds[k];
+    if (hd.type === "ledge" && hd.y < 2400) ledges[Math.round(hd.y)] = 1;
+  }
+  for (var yy in ledges) {
+    railHtml += '<span class="railmark cp" style="top:' + ((parseInt(yy, 10) / WALL_H) * 100).toFixed(1) + '%"></span>';
+  }
+  railHtml += '<span class="railmark best" style="top:' + ((S.bestY / WALL_H) * 100).toFixed(1) + '%"></span>';
+  railHtml += '<span class="railmark cur" id="railCur" style="top:' + ((torsoY / WALL_H) * 100).toFixed(1) + '%"></span>';
+  el.rail.innerHTML = railHtml;
+
+  /* overlay */
+  var op = S.phase;
+  if (op !== lastOverlayPhase) {
+    lastOverlayPhase = op;
+    if (op === "start" || op === "dead" || op === "win") {
+      overlayCard.innerHTML = overlayHtml();
+      bindOverlayButtons();
+      overlay.classList.add("show");
+    } else {
+      overlay.classList.remove("show");
+    }
+  }
+}
+
+/* ============================= ARRANQUE ============================= */
+function boot() {
+  wall = document.getElementById("wall");
+  overlay = document.getElementById("overlay");
+  overlayCard = document.getElementById("overlayCard");
+  toastEl = document.getElementById("toast");
+  el = {
+    hHeight: document.getElementById("hHeight"),
+    hBest: document.getElementById("hBest"),
+    hFalls: document.getElementById("hFalls"),
+    hTime: document.getElementById("hTime"),
+    stamFill: document.getElementById("stamFill"),
+    stamNum: document.getElementById("stamNum"),
+    status: document.getElementById("status"),
+    route: document.getElementById("route"),
+    rail: document.getElementById("rail")
+  };
+
+  S = newGame(1000 + Math.floor(Math.random() * 9000));
+  S.phase = "start";
+  buildHolds();
+
+  var limbs = document.querySelectorAll(".limb");
+  for (var i = 0; i < limbs.length; i++) {
+    limbs[i].addEventListener("click", function () {
+      if (S.phase !== "play") return;
+      var l = this.getAttribute("data-limb");
+      S.selected = S.selected === l ? null : l;
+    });
+  }
+  document.getElementById("btnNew").addEventListener("click", function () {
+    S = newGame(1000 + Math.floor(Math.random() * 9000));
+    buildHolds();
+    lastOverlayPhase = "";
+  });
+  document.getElementById("btnRestart").addEventListener("click", function () {
+    S = newGame(S.seed);
+    buildHolds();
+    lastOverlayPhase = "";
+  });
+  window.addEventListener("keydown", function (e) {
+    if (S.phase !== "play") return;
+    if (e.key === "Escape") { S.selected = null; return; }
+    var map = { "1": "lh", "2": "rh", "3": "lf", "4": "rf" };
+    if (map[e.key]) {
+      var l = map[e.key];
+      S.selected = S.selected === l ? null : l;
+      e.preventDefault();
+    }
+  });
+
+  var last = performance.now();
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    step(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+document.addEventListener("DOMContentLoaded", boot);
+</script>
+</body>
+</html>
